@@ -8,42 +8,41 @@ library(ggplot2)
 library(readr)
 library(lubridate)
 library(tidyr)
+library(plotly)
 ###### Descriptive Statistics #####
 
 data <- read_csv("data/walmart_cleaned_subset.csv")
 
-# Convert Date column to Date format
+# Convert the date column to date format
 data <- data %>% mutate(Date = as.Date(Date, format = "%Y-%m-%d"))
 
-# ---- Dataset Overview ----
-cat("Total Records:", nrow(data), "\n")
-cat("Unique Stores:", length(unique(data$Store)), "\n")
-cat("Unique Departments:", length(unique(data$Dept)), "\n")
+# Dataset overview 
+cat("Total Records:", nrow(data), "\n")  
+cat("Unique Stores:", length(unique(data$Store)), "\n") 
+cat("Unique Departments:", length(unique(data$Dept)), "\n")  
 
-# ---- Check for Missing Values ----
+# Check for missing values 
 missing_values <- colSums(is.na(data))
-print(missing_values)
+print(missing_values) 
 
-# ---- Descriptive Statistics ----
-summary(data)
-
+# Descriptive statistics
 desc_stats <- data %>%
   group_by(Store, Dept) %>%
   summarise(
-    Min_Sales = min(Weekly_Sales, na.rm = TRUE),
-    Max_Sales = max(Weekly_Sales, na.rm = TRUE),
-    Mean_Sales = mean(Weekly_Sales, na.rm = TRUE),
-    Median_Sales = median(Weekly_Sales, na.rm = TRUE),
-    StdDev_Sales = sd(Weekly_Sales, na.rm = TRUE)
+    Min_Sales = min(Weekly_Sales, na.rm = TRUE),  
+    Max_Sales = max(Weekly_Sales, na.rm = TRUE),  
+    Mean_Sales = mean(Weekly_Sales, na.rm = TRUE),  
+    Median_Sales = median(Weekly_Sales, na.rm = TRUE), 
+    StdDev_Sales = sd(Weekly_Sales, na.rm = TRUE)  
   )
-print(desc_stats)
+print(desc_stats)  
 
-# ---- Time Series Analysis ----
+# Time series analysis
 time_series <- data %>%
   group_by(Date) %>%
-  summarise(Total_Weekly_Sales = sum(Weekly_Sales, na.rm = TRUE))
+  summarise(Total_Weekly_Sales = sum(Weekly_Sales, na.rm = TRUE))  # Aggregate weekly sales by date
 
-# Define holiday dates and labels
+# Define holiday dates
 holidays <- data.frame(
   Date = as.Date(c("2010-02-12", "2011-02-11", "2012-02-10", "2013-02-08",
                    "2010-09-10", "2011-09-09", "2012-09-07", "2013-09-06",
@@ -52,119 +51,84 @@ holidays <- data.frame(
   Event = c(rep("Super Bowl", 4), rep("Labour Day", 4), rep("Thanksgiving", 4), rep("Christmas", 4))
 )
 
-# ---- Plot the Time Series with Holidays ----
+# Create plotly graph for weekly sales
+fig <- plot_ly(time_series, 
+               x = ~Date, 
+               y = ~Total_Weekly_Sales, 
+               type = 'scatter', 
+               mode = 'lines', 
+               name = 'Weekly Sales',
+               line = list(color = 'blue', width = 2))  
+fig
+
+# Graph of weekly sales with event lines
 ggplot(time_series, aes(x = Date, y = Total_Weekly_Sales)) +
-  geom_line(color = "blue") +
-  geom_vline(data = holidays, aes(xintercept = as.numeric(Date), color = Event), linetype = "dashed") +
-  scale_color_manual(values = c("Super Bowl" = "red", "Labour Day" = "green", "Thanksgiving" = "purple", "Christmas" = "orange")) +
-  labs(
-    title = "Weekly Sales Over Time with Holiday Markers",
-    x = "Date",
-    y = "Total Weekly Sales",
-    color = "Holiday"
-  ) +
+  geom_line(color = "blue", size = 1) + 
+  geom_vline(data = holidays, aes(xintercept = as.numeric(Date), color = Event), 
+             linetype = "dashed", size = 1) +  
+  scale_color_manual(values = c("Super Bowl" = "blue", 
+                                "Labour Day" = "green", 
+                                "Thanksgiving" = "orange", 
+                                "Christmas" = "red")) + 
+  labs(title = "Weekly Sales with Holiday Events",
+       x = "Date",
+       y = "Total Weekly Sales",
+       color = "Event") +
   theme_minimal()
 
-# ---- Boxplot of Weekly Sales by Store ----
-ggplot(data, aes(x = as.factor(Store), y = Weekly_Sales)) +
-  geom_boxplot(outlier.color = "red", outlier.shape = 16) +
-  labs(
-    title = "Distribution of Weekly Sales by Store",
-    x = "Store",
-    y = "Weekly Sales"
-  ) +
-  theme_minimal()
+data <- data %>% mutate(Year = year(Date))  # Extract the year from the Date column
+# Aggregate sales by store and year
+store_year_sales <- data %>%
+  group_by(Store, Year) %>%
+  summarise(Total_Weekly_Sales = sum(Weekly_Sales, na.rm = TRUE)) %>%
+  ungroup()  
 
-# ---- Seasonal Analysis: Aggregate sales by month ----
+# bar plot for weekly sales by store and year 
+ggplot(store_year_sales, aes(x = as.factor(Store), y = Total_Weekly_Sales, fill = as.factor(Year))) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(
+    title = "Total Weekly Sales by Store and Year", 
+    x = "Store",  
+    y = "Total Weekly Sales",  
+    fill = "Year" 
+  ) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Graph of monthly sales
 data <- data %>% mutate(Month = format(Date, "%Y-%m"))
+
 monthly_sales <- data %>%
   group_by(Month) %>%
-  summarise(Total_Monthly_Sales = sum(Weekly_Sales, na.rm = TRUE))
+  summarise(Total_Monthly_Sales = sum(Weekly_Sales, na.rm = TRUE)) 
 
-ggplot(monthly_sales, aes(x = as.Date(paste0(Month, "-01")), y = Total_Monthly_Sales)) +
-  geom_line(color = "green") +
-  labs(
-    title = "Monthly Sales Trend",
-    x = "Month",
-    y = "Total Monthly Sales"
-  ) +
-  theme_minimal()
+# Plotly graph for monthly sales
+monthly_sales_fig <- plot_ly(monthly_sales, 
+                             x = ~as.Date(paste0(Month, "-01")),  
+                             y = ~Total_Monthly_Sales, 
+                             type = 'scatter', 
+                             mode = 'lines', 
+                             name = 'Monthly Sales') %>%
+  layout(title = "Monthly Sales Trend",  
+         xaxis = list(title = "Month"),
+         yaxis = list(title = "Total Monthly Sales"))
 
-# ---- Holiday Impact Analysis ----
-data <- data %>% mutate(IsHoliday = ifelse(Date %in% holidays$Date, 1, 0))
+# Display the graph for monthly sales
+monthly_sales_fig
 
-holiday_sales <- data %>%
+data <- data %>% mutate(IsHoliday = ifelse(Date %in% holidays$Date, TRUE, FALSE))
+
+average_sales <- data %>%
   group_by(IsHoliday) %>%
   summarise(Average_Sales = mean(Weekly_Sales, na.rm = TRUE))
-print(holiday_sales)
 
-ggplot(holiday_sales, aes(x = as.factor(IsHoliday), y = Average_Sales, fill = as.factor(IsHoliday))) +
-  geom_bar(stat = "identity") +
-  labs(
-    title = "Impact of Holidays on Sales",
-    x = "Holiday (1=Yes, 0=No)",
-    y = "Average Weekly Sales"
-  ) +
+ggplot(average_sales, aes(x = as.factor(IsHoliday), y = Average_Sales, fill = as.factor(IsHoliday))) +
+  geom_bar(stat = "identity", width = 0.5) + 
+  scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "blue")) + 
+  labs(title = "Average Sales: Holiday vs Non-Holiday", x = "Holiday", y = "Avg Weekly Sales") + 
   theme_minimal()
 
-# Summary statistics for the entire dataset
-summary(data)
-
-# Group by store and department for more granular statistics
-desc_stats <- data %>%
-  group_by(Store, Dept) %>%
-  summarise(
-    Min_Sales = min(Weekly_Sales, na.rm = TRUE),
-    Max_Sales = max(Weekly_Sales, na.rm = TRUE),
-    Mean_Sales = mean(Weekly_Sales, na.rm = TRUE),
-    Median_Sales = median(Weekly_Sales, na.rm = TRUE),
-    StdDev_Sales = sd(Weekly_Sales, na.rm = TRUE)
-  )
-print(desc_stats)
-
-# Aggregate weekly sales by date
-agg_data <- data %>%
-  group_by(Date) %>%
-  summarise(Total_Weekly_Sales = sum(Weekly_Sales, na.rm = TRUE))
-
-# Plot the aggregated weekly sales over time
-ggplot(time_series, aes(x = Date, y = Total_Weekly_Sales)) +
-  geom_point(color = "blue") +
-  labs(
-    title = "Weekly Sales Over Time",
-    x = "Date",
-    y = "Total Weekly Sales"
-  ) +
-  theme_minimal()
-
-# Boxplot of Weekly Sales by Store
-ggplot(data, aes(x = as.factor(Store), y = Weekly_Sales)) +
-  geom_boxplot() +
-  labs(
-    title = "Distribution of Weekly Sales by Store",
-    x = "Store",
-    y = "Weekly Sales"
-  ) +
-  theme_minimal()
-
-# Add a column for month and year
-data <- data %>%
-  mutate(Month = format(Date, "%Y-%m"))
-
-# Aggregate sales by month
-monthly_sales <- data %>%
-  group_by(Month) %>%
-  summarise(Total_Monthly_Sales = sum(Weekly_Sales, na.rm = TRUE))
-
-# Plot monthly sales trend
-ggplot(monthly_sales, aes(x = as.Date(paste0(Month, "-01")), y = Total_Monthly_Sales)) +
-  geom_line(color = "green") +
-  labs(
-    title = "Monthly Sales Trend",
-    x = "Month",
-    y = "Total Monthly Sales"
-  ) +
-  theme_minimal()
 
 
 # install.packages("sf", configure.args = "--with-proj-lib=/usr/local/lib/")
