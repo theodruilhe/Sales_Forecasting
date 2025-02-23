@@ -275,3 +275,283 @@ ggplot() +
   labs(color = NULL)
 
 
+###### REGISTRATION ######
+
+# Agréger les ventes hebdomadaires pour tous les magasins
+agg_all_stores <- data %>%
+  group_by(Store, Date) %>%
+  summarise(Total_Weekly_Sales = sum(Weekly_Sales, na.rm = TRUE), .groups = "drop")
+
+ggplot(agg_all_stores, aes(x = Date, y = Total_Weekly_Sales, color = as.factor(Store))) +
+  geom_line() +
+  labs(title = "Ventes Hebdomadaires par Magasin",
+       x = "Date",
+       y = "Total des Ventes Hebdomadaires",
+       color = "Magasin") +
+  theme_minimal()
+# We have amplitude variation, but not phase variation
+
+# We create a dataset oh the store 4 for inly dpt 1
+
+store_4_dpt_1 <- data %>%
+  filter(Store == 4, Dept == 1)
+
+data_test <- store_4_dpt_1 %>%
+  mutate(
+    annee = year(Date),      # Extraire l'année
+    semaine = week(Date)     # Extraire la semaine de l'année
+  )
+
+# 🔹 Tracer les ventes hebdomadaires superposées par année
+ggplot(data_test, aes(x = semaine, y = Weekly_Sales, color = as.factor(annee))) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Évolution des ventes hebdomadaires par année",
+    x = "Semaine de l'année",
+    y = "Ventes",
+    color = "Année"
+  ) +
+  theme_minimal()
+
+# We have a phase problem here, we can use landmark registration
+
+# Séparer les données par année
+data_2010 <- data_test %>% filter(annee == 2010)
+data_2011 <- data_test %>% filter(annee == 2011)
+data_2012 <- data_test %>% filter(annee == 2012)
+
+# On applique les splines pour chaque année
+
+# 2010
+
+# We create the spline
+
+time_2010 <- data_2010$semaine
+Spline_b_2010 <- create.bspline.basis(range(time_2010), nbasis = 25, norder = 3)
+
+funList_2010 = smooth.basis(time_2010, data_2010$Weekly_Sales, Spline_b_2010)
+my_smooth_func_2010 = funList_2010$fd
+plot(my_smooth_func_2010)
+
+
+# 🔹 Lissage des ventes pour 2011 (copie exacte du code 2010)
+time_2011 <- data_2011$semaine
+Spline_b_2011 <- create.bspline.basis(range(time_2011), nbasis = 25, norder = 3)
+funList_2011 <- smooth.basis(time_2011, data_2011$Weekly_Sales, Spline_b_2011)
+my_smooth_func_2011 <- funList_2011$fd
+
+# 🔹 Lissage des ventes pour 2012 (copie exacte du code 2010)
+time_2012 <- data_2012$semaine
+Spline_b_2012 <- create.bspline.basis(range(time_2012), nbasis = 25, norder = 3)
+funList_2012 <- smooth.basis(time_2012, data_2012$Weekly_Sales, Spline_b_2012)
+my_smooth_func_2012 <- funList_2012$fd
+
+
+# 🔹 Tracer les 3 courbes lissées ensemble
+plot(my_smooth_func_2010, col = "blue", lwd = 2, ylim = c(15000, 100000),
+     main = "Ventes hebdomadaires lissées (2010, 2011, 2012)", xlab = "Semaine", ylab = "Ventes")
+lines(my_smooth_func_2011, col = "red", lwd = 2)  # Ajouter la courbe 2011
+lines(my_smooth_func_2012, col = "green", lwd = 2)  # Ajouter la courbe 2012
+
+# Ajouter une légende
+legend("top", legend = c("2010", "2011", "2012"), col = c("blue", "red", "green"), lwd = 2)
+
+# Landmark registration
+
+# We create landmark when holyday is equal to 1
+
+landmark_2010 <- data_2010 %>%
+  filter(IsHoliday == 1) %>%
+  pull(semaine)
+
+landmark_2011 <- data_2011 %>%
+  filter(IsHoliday == 1) %>%
+  pull(semaine)
+
+landmark_2012 <- data_2012 %>%
+  filter(IsHoliday == 1) %>%
+  pull(semaine)
+
+# 🔹 Tracer les courbes lissées avec les points de repère
+
+plot(my_smooth_func_2010, col = "blue", lwd = 2, ylim = c(15000, 100000),
+     main = "Ventes hebdomadaires lissées (2010, 2011, 2012)", xlab = "Semaine", ylab = "Ventes")
+lines(my_smooth_func_2011, col = "red", lwd = 2)  # Ajouter la courbe 2011
+lines(my_smooth_func_2012, col = "green", lwd = 2)  # Ajouter la courbe 2012
+points(landmark_2010, rep(91000, length(landmark_2010)), col = "blue", pch = 19)  # Ajouter les points de repère 2010
+points(landmark_2011, rep(95000, length(landmark_2011)), col = "red", pch = 19)  # Ajouter les points de repère 2011
+points(landmark_2012, rep(100000, length(landmark_2012)), col = "green", pch = 19)  # Ajouter les points de repère 2012
+legend("top", legend = c("2010", "2011", "2012"), col = c("blue", "red", "green"), lwd = 2)
+
+
+# Ajouter 1 (début) et 52 (fin) aux landmarks existants
+landmark_2010 <- c(1, landmark_2010)
+landmark_2011 <- c(1, landmark_2011)
+landmark_2012 <- c(1, landmark_2012)
+
+# Déterminer la longueur maximale des landmarks
+max_landmarks <- max(length(landmark_2010), length(landmark_2011), length(landmark_2012))
+
+# Compléter les listes avec NA pour uniformiser leur taille
+landmark_2010 <- c(landmark_2010, rep(NA, max_landmarks - length(landmark_2010)))
+landmark_2011 <- c(landmark_2011, rep(NA, max_landmarks - length(landmark_2011)))
+landmark_2012 <- c(landmark_2012, rep(NA, max_landmarks - length(landmark_2012)))
+
+# Créer le dataframe des landmarks
+landmark_df <- data.frame(
+  id = rep(c("2010", "2011", "2012"), each = max_landmarks),  # A = 2010, B = 2011, C = 2012
+  position = c(landmark_2010, landmark_2011, landmark_2012),  # Positions des landmarks
+  landmark = rep(1:max_landmarks, times = 3)  # Identifiant du landmark (1, 2, 3, ...)
+)
+
+# Vérifier la structure du dataframe
+landmark_df
+
+# Calculer la moyenne des landmarks par groupe en ignorant les NA
+Mean_landmark <- aggregate(landmark_df$position, 
+                           by = list(landmark_df$landmark), 
+                           FUN = mean, 
+                           na.rm = TRUE)$x
+
+# Répéter la moyenne pour remplir le dataframe
+landmark_df$Mean_landmark = rep(Mean_landmark, 3)
+# Vérifier la structure du dataframe
+print(landmark_df)
+
+ggplot(data = landmark_df,
+       aes(as.factor(landmark), position, color=as.factor(id) )) +
+  geom_point() +
+  theme_classic() + theme(legend.title=element_blank())+ xlab("Landmark number") + ylab("Time")
+
+thrid_plot <- ggplot(landmark_df,
+                     aes(x = Mean_landmark, y = position,
+                         group = id, color=as.factor(id))) + geom_point() +
+  geom_line() +
+  theme_classic() +
+  theme(legend.title=element_blank())+ 
+  xlab("Time") + ylab("Time")+ 
+  scale_x_continuous(limits = c(1, 53))+ 
+  scale_y_continuous(limits = c(0, 53))
+thrid_plot
+
+# Ca ne semble pas pertinent avec les IsHolyday égal 1, on choisit donc les points manuellement
+# On remarque des pics sur les courbes dde chaque année
+
+# Fonction pour trouver les semaines de max dans des plages définies
+find_max_week <- function(data, year, ranges) {
+  max_weeks <- c()  # Initialisation de la liste des semaines max
+  
+  for (range in ranges) {
+    subset_data <- data %>%
+      filter(annee == year, semaine >= range[1], semaine <= range[2])
+    
+    if (nrow(subset_data) > 0) {
+      max_week <- subset_data$semaine[which.max(subset_data$Weekly_Sales)]
+      max_weeks <- c(max_weeks, max_week)
+    } else {
+      max_weeks <- c(max_weeks, NA)  # Ajouter NA si aucune donnée dans la plage
+    }
+  }
+  return(max_weeks)
+}
+
+# Définition des plages de semaines pour chaque année
+ranges_2010 <- list(c(6,10), c(20,30), c(30,48), c(48,53))
+ranges_2011 <- list(c(6,10), c(20,30), c(30,48), c(48,53))
+ranges_2012 <- list(c(6,10), c(20,30), c(30,43))  # Jusqu'à semaine 43 pour 2012
+
+# Calcul des landmarks par année
+landmark_2010 <- find_max_week(data_test, 2010, ranges_2010)
+landmark_2011 <- find_max_week(data_test, 2011, ranges_2011)
+landmark_2012 <- find_max_week(data_test, 2012, ranges_2012)
+
+# Ajouter 1 au début de chaque liste
+landmark_2010 <- c(1, landmark_2010)
+landmark_2011 <- c(1, landmark_2011)
+landmark_2012 <- c(1, landmark_2012, NA)
+
+# Vérifier les résultats
+print(landmark_2010)
+print(landmark_2011)
+print(landmark_2012)
+
+
+landmark_df <- data.frame(
+  id = rep(c("2010", "2011", "2012"), each = max_landmarks),  # A = 2010, B = 2011, C = 2012
+  position = c(landmark_2010, landmark_2011, landmark_2012),  # Positions des landmarks
+  landmark = rep(1:max_landmarks, times = 3)  # Identifiant du landmark (1, 2, 3, ...)
+)
+
+# Vérifier la structure du dataframe
+landmark_df
+
+# Calculer la moyenne des landmarks par groupe en ignorant les NA
+Mean_landmark <- aggregate(landmark_df$position, 
+                           by = list(landmark_df$landmark), 
+                           FUN = mean, 
+                           na.rm = TRUE)$x
+
+# Répéter la moyenne pour remplir le dataframe
+landmark_df$Mean_landmark = rep(Mean_landmark, 3)
+# Vérifier la structure du dataframe
+print(landmark_df)
+
+
+
+ggplot(data = landmark_df,
+       aes(as.factor(landmark), position, color=as.factor(id) )) +
+  geom_point() +
+  theme_classic() + theme(legend.title=element_blank())+ xlab("Landmark number") + ylab("Time")
+
+thrid_plot <- ggplot(landmark_df,
+                     aes(x = Mean_landmark, y = position,
+                         group = id, color=as.factor(id))) + geom_point() +
+  geom_line() +
+  theme_classic() +
+  theme(legend.title=element_blank())+ 
+  xlab("Time") + ylab("Time")+ 
+  scale_x_continuous(limits = c(1, 53))+ 
+  scale_y_continuous(limits = c(1, 53))
+thrid_plot
+
+Hermite_2010 = cm.spline(Mean_landmark, c(landmark_2010), n=53)
+Hermite_2011 = cm.spline(Mean_landmark, c(landmark_2011), n=53)
+Hermite_2012 = cm.spline(Mean_landmark, c(landmark_2012), n=53)
+
+landmark_df_hermite = data.frame(id = rep(c("A","B","C"),
+                                          each = length(Hermite_2010$x)),
+                                 position = c(Hermite_2010$x, Hermite_2011$x, Hermite_2012$x),
+                                 landmark = c(Hermite_2010$y, Hermite_2011$y, Hermite_2012$y))
+H_plot <- ggplot(landmark_df_hermite,
+                 aes(x = position, y = landmark,
+                     group = id, color=as.factor(id))) +
+  geom_line() +
+  theme_classic() + theme(legend.title=element_blank())+ xlab("Time") + ylab("Time")+ scale_x_continuous(limits = c(1, 53))+ scale_y_continuous(limits = c(1, 53))
+H_plot
+#See slide 41 of the course. First, estimate inverse warping.
+
+
+
+
+gam_A_inv = approx(Hermite_2010$y, Hermite_2010$x, xout = data_2010$semaine)
+gam_B_inv = approx(Hermite_2011$y, Hermite_2011$x, xout = data_2011$semaine)
+gam_C_inv = approx(Hermite_2012$y, Hermite_2012$x, xout = data_2012$semaine)
+
+f_A_regis_H = approx(gam_A_inv$y, data_2010$Weekly_Sales, xout = data_2010$semaine)$y
+f_B_regis_H = approx(gam_B_inv$y, data_2011$Weekly_Sales, xout = data_2011$semaine)$y
+f_C_regis_H = approx(gam_C_inv$y, data_2012$Weekly_Sales, xout = data_2012$semaine)$y
+time <- seq(1, 53, by = 1)
+Functions_regis = data.frame(
+  t = c(data_2010$semaine, data_2011$semaine, data_2012$semaine),
+  new_f = c(f_A_regis_H, f_B_regis_H, f_C_regis_H),
+  id = rep(c("A", "B", "C"), times = c(length(data_2010$semaine), length(data_2011$semaine), length(data_2012$semaine))),
+  type = rep(c("Hermite", "Hermite", "Hermite"), times = c(length(data_2010$semaine), length(data_2011$semaine), length(data_2012$semaine)))
+)
+
+F_fin <- ggplot(Functions_regis,
+                aes(x = t, y = new_f,
+                    color=as.factor(id))) +
+  geom_line(size=1) +
+  theme_classic() + theme(legend.title=element_blank())+ xlab("Time") + ylab("Curve values")
+suppressWarnings(print(F_fin))

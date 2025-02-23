@@ -555,12 +555,12 @@ thrid_plot <- ggplot(landmark_df,
   scale_y_continuous(limits = c(1, 53))
 thrid_plot
 
-Hermite_2010 = cm.spline(Mean_landmark, c(landmark_2010), n=48)
-Hermite_2011 = cm.spline(Mean_landmark, c(landmark_2011), n=52)
-Hermite_2012 = cm.spline(Mean_landmark, c(landmark_2012), n=43)
+Hermite_2010 = cm.spline(Mean_landmark, c(landmark_2010), n=53)
+Hermite_2011 = cm.spline(Mean_landmark, c(landmark_2011), n=53)
+Hermite_2012 = cm.spline(Mean_landmark, c(landmark_2012), n=53)
 
 landmark_df_hermite = data.frame(id = rep(c("A","B","C"),
-                                          each = length(Hermite_A$x)),
+                                          each = length(Hermite_2010$x)),
                                  position = c(Hermite_2010$x, Hermite_2011$x, Hermite_2012$x),
                                  landmark = c(Hermite_2010$y, Hermite_2011$y, Hermite_2012$y))
 H_plot <- ggplot(landmark_df_hermite,
@@ -582,13 +582,17 @@ f_A_regis_H = approx(gam_A_inv$y, data_2010$Weekly_Sales, xout = data_2010$semai
 f_B_regis_H = approx(gam_B_inv$y, data_2011$Weekly_Sales, xout = data_2011$semaine)$y
 f_C_regis_H = approx(gam_C_inv$y, data_2012$Weekly_Sales, xout = data_2012$semaine)$y
 time <- seq(1, 53, by = 1)
-Functions_regis = data.frame(t = rep(time, 3),
-                             new_f = c(f_A_regis_H, f_B_regis_H, f_C_regis_H),
-                             id = rep(c("A", "B", "C"), each=length(time)), type = rep(c("Hermite", "Hermite", "Hermite"),
-                                                                                       each=length(time)))
+Functions_regis = data.frame(
+  t = c(data_2010$semaine, data_2011$semaine, data_2012$semaine),
+  new_f = c(f_A_regis_H, f_B_regis_H, f_C_regis_H),
+  id = rep(c("A", "B", "C"), times = c(length(data_2010$semaine), length(data_2011$semaine), length(data_2012$semaine))),
+  type = rep(c("Hermite", "Hermite", "Hermite"), times = c(length(data_2010$semaine), length(data_2011$semaine), length(data_2012$semaine)))
+)
+
 F_fin <- ggplot(Functions_regis,
                 aes(x = t, y = new_f,
                     color=as.factor(id))) +
   geom_line(size=1) +
   theme_classic() + theme(legend.title=element_blank())+ xlab("Time") + ylab("Curve values")
 suppressWarnings(print(F_fin))
+
