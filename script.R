@@ -6,12 +6,106 @@
 library(dplyr)
 library(ggplot2)
 library(readr)
-
+library(lubridate)
+library(tidyr)
 ###### Descriptive Statistics #####
 
 data <- read_csv("data/walmart_cleaned_subset.csv")
 
-# AJOUTE CE QUE T'AS FAIT ICI ANAIS
+# Convert Date column to Date format
+data <- data %>% mutate(Date = as.Date(Date, format = "%Y-%m-%d"))
+
+# ---- Dataset Overview ----
+cat("Total Records:", nrow(data), "\n")
+cat("Unique Stores:", length(unique(data$Store)), "\n")
+cat("Unique Departments:", length(unique(data$Dept)), "\n")
+
+# ---- Check for Missing Values ----
+missing_values <- colSums(is.na(data))
+print(missing_values)
+
+# ---- Descriptive Statistics ----
+summary(data)
+
+desc_stats <- data %>%
+  group_by(Store, Dept) %>%
+  summarise(
+    Min_Sales = min(Weekly_Sales, na.rm = TRUE),
+    Max_Sales = max(Weekly_Sales, na.rm = TRUE),
+    Mean_Sales = mean(Weekly_Sales, na.rm = TRUE),
+    Median_Sales = median(Weekly_Sales, na.rm = TRUE),
+    StdDev_Sales = sd(Weekly_Sales, na.rm = TRUE)
+  )
+print(desc_stats)
+
+# ---- Time Series Analysis ----
+time_series <- data %>%
+  group_by(Date) %>%
+  summarise(Total_Weekly_Sales = sum(Weekly_Sales, na.rm = TRUE))
+
+# Define holiday dates and labels
+holidays <- data.frame(
+  Date = as.Date(c("2010-02-12", "2011-02-11", "2012-02-10", "2013-02-08",
+                   "2010-09-10", "2011-09-09", "2012-09-07", "2013-09-06",
+                   "2010-11-26", "2011-11-25", "2012-11-23", "2013-11-29",
+                   "2010-12-31", "2011-12-30", "2012-12-28", "2013-12-27")),
+  Event = c(rep("Super Bowl", 4), rep("Labour Day", 4), rep("Thanksgiving", 4), rep("Christmas", 4))
+)
+
+# ---- Plot the Time Series with Holidays ----
+ggplot(time_series, aes(x = Date, y = Total_Weekly_Sales)) +
+  geom_line(color = "blue") +
+  geom_vline(data = holidays, aes(xintercept = as.numeric(Date), color = Event), linetype = "dashed") +
+  scale_color_manual(values = c("Super Bowl" = "red", "Labour Day" = "green", "Thanksgiving" = "purple", "Christmas" = "orange")) +
+  labs(
+    title = "Weekly Sales Over Time with Holiday Markers",
+    x = "Date",
+    y = "Total Weekly Sales",
+    color = "Holiday"
+  ) +
+  theme_minimal()
+
+# ---- Boxplot of Weekly Sales by Store ----
+ggplot(data, aes(x = as.factor(Store), y = Weekly_Sales)) +
+  geom_boxplot(outlier.color = "red", outlier.shape = 16) +
+  labs(
+    title = "Distribution of Weekly Sales by Store",
+    x = "Store",
+    y = "Weekly Sales"
+  ) +
+  theme_minimal()
+
+# ---- Seasonal Analysis: Aggregate sales by month ----
+data <- data %>% mutate(Month = format(Date, "%Y-%m"))
+monthly_sales <- data %>%
+  group_by(Month) %>%
+  summarise(Total_Monthly_Sales = sum(Weekly_Sales, na.rm = TRUE))
+
+ggplot(monthly_sales, aes(x = as.Date(paste0(Month, "-01")), y = Total_Monthly_Sales)) +
+  geom_line(color = "green") +
+  labs(
+    title = "Monthly Sales Trend",
+    x = "Month",
+    y = "Total Monthly Sales"
+  ) +
+  theme_minimal()
+
+# ---- Holiday Impact Analysis ----
+data <- data %>% mutate(IsHoliday = ifelse(Date %in% holidays$Date, 1, 0))
+
+holiday_sales <- data %>%
+  group_by(IsHoliday) %>%
+  summarise(Average_Sales = mean(Weekly_Sales, na.rm = TRUE))
+print(holiday_sales)
+
+ggplot(holiday_sales, aes(x = as.factor(IsHoliday), y = Average_Sales, fill = as.factor(IsHoliday))) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Impact of Holidays on Sales",
+    x = "Holiday (1=Yes, 0=No)",
+    y = "Average Weekly Sales"
+  ) +
+  theme_minimal()
 
 # Summary statistics for the entire dataset
 summary(data)
