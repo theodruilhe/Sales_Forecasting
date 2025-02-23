@@ -232,6 +232,8 @@ ggplot() +
 
 # GENERALIZATION
 
+agg_data <- time_series
+
 # We first do a Spline with 50 knots uniformly distributed
 Spline_b_gen <- create.bspline.basis(c(0,143), nbasis = 50, norder = 3)
 plot(Spline_b_gen)
