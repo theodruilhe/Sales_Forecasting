@@ -178,7 +178,7 @@ agg_store_4$y_pred = y_pred
 
 # We plot the raw data and the spline
 colors <- c("Values" = "red",
-            "First regression spline" = "#d2d9ff")
+            "First regression spline" = "blue")
 
 ggplot() +
   geom_point(data = agg_store_4, aes(x = time, y = Total_Weekly_Sales, color = "Values")) + 
@@ -189,7 +189,9 @@ ggplot() +
   scale_color_manual(values = colors) +
   labs(color = NULL)
 
-# COMMENTS
+# We have a pretty good fit but we have to add 50 knots to the spline for 
+# permits to have a good fit durind the christmas period, which is a lot 
+# and can lead to overfitting
 
 # We now do a Spline with less knots but with some specific knots around Christmas
 
@@ -223,7 +225,7 @@ ggplot() +
   scale_color_manual(values = colors) +
   labs(color = NULL)
 
-# COMMENTS
+# With manually added knots, we can have a better fits with less knots
 
 
 # GENERALIZATION
@@ -249,8 +251,6 @@ ggplot() +
   scale_color_manual(values = colors) +
   labs(color = NULL)
 
-# COMMENTS
-
 # We now do a Spline with fewer knots but with some specific knots around Christmas
 
 # We create the spline
@@ -273,6 +273,10 @@ ggplot() +
   ylab("Values") +
   scale_color_manual(values = colors) +
   labs(color = NULL)
+
+# As for the store 4, we have a better fit with fewer knots and some
+# specific knots around Christmas
+
 
 
 ###### REGISTRATION ######
