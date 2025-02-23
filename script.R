@@ -2,13 +2,13 @@
 
 # Authors: Anaïs BOUGHANEM, Théo DRUILHE and Sigurd SAUE
 
-
 library(dplyr)
 library(ggplot2)
 library(readr)
 library(lubridate)
 library(tidyr)
 library(plotly)
+library(purrr)
 ###### Descriptive Statistics #####
 
 data <- read_csv("data/walmart_cleaned_subset.csv")
@@ -279,6 +279,43 @@ ggplot() +
 # As for the store 4, we have a better fit with fewer knots and some
 # specific knots around Christmas
 
+# We now apply the spline to all stores
+
+df_total_sales <- data %>%
+  group_by(Store, Date) %>%
+  summarise(Total_Weekly_Sales = sum(Weekly_Sales, na.rm = TRUE), .groups = "drop")
+
+df_total_sales <- df_total_sales %>%
+  group_by(Store) %>%
+  arrange(Date) %>%
+  mutate(Week = row_number()) %>% 
+  ungroup()
+
+# Create a B-spline basis
+Spline_b_all_store <- create.bspline.basis(c(0, max(df_total_sales$Week)), breaks = knots_positions, norder = 3)
+
+# We create a function to smooth the data
+smooth_store <- function(df) {
+  funList <- smooth.basis(df$Week, df$Total_Weekly_Sales, Spline_b_all_store)
+  df$y_pred <- eval.fd(df$Week, funList$fd)  # Spline predictions
+  return(df)
+}
+
+# We apply the spline to all stores
+df_smoothed_sales <- df_total_sales %>%
+  group_by(Store) %>%
+  nest() %>%
+  mutate(data = map(data, smooth_store)) %>%
+  unnest(cols = data)
+
+# We plot the 45 smoothed curves
+ggplot(df_smoothed_sales, aes(x = Week, y = y_pred, color = as.factor(Store))) +
+  geom_line() +
+  labs(title = "Spline Smoothing of Weekly Sales",
+       x = "Week",
+       y = "Smoothed Sales") +  # Removed the color label
+  theme_minimal() +
+  theme(legend.position = "none")  # Hides the legend
 
 
 ###### REGISTRATION ######
