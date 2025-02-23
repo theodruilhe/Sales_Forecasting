@@ -9,6 +9,9 @@ library(lubridate)
 library(tidyr)
 library(plotly)
 library(purrr)
+library(cluster)   # For silhouette analysis
+library(factoextra) # For k-means visualization
+
 ###### Descriptive Statistics #####
 
 data <- read_csv("data/walmart_cleaned_subset.csv")
@@ -581,3 +584,96 @@ suppressWarnings(print(F_fin))
 # We can observe that it doesn't work. Due to the fact that 2010 and 2012
 # are not complete in the dataset, and that we have multiple landmarks,
 # we did not manage to to thes registration
+
+
+
+
+#### FPCA ####
+# Define the range of weeks
+week_range <- c(0, max(df_smoothed_sales$Week))
+
+# Create a B-spline basis for FPCA with corrected order
+fpca_basis <- create.bspline.basis(week_range, breaks = knots_positions, norder = 4)
+
+# Function to convert data into a functional data object
+convert_to_fd <- function(df) {
+  fdPar_obj <- fdPar(fpca_basis, Lfdobj = 2, lambda = 1e-2)  # Regularization
+  smooth_fd <- smooth.basis(df$Week, df$y_pred, fdPar_obj)
+  return(smooth_fd$fd)
+}
+
+# Apply functional transformation to all stores
+fd_objects <- df_smoothed_sales %>%
+  group_by(Store) %>%
+  nest() %>%
+  mutate(fd = map(data, convert_to_fd))
+
+# Extract functional data objects
+fd_list <- fd_objects$fd
+
+# Manually combine multiple functional data objects into a single fd object
+if (length(fd_list) > 1) {
+  coef_matrix <- do.call(cbind, lapply(fd_list, function(fd) fd$coefs))  # Combine coefficient matrices
+  fd_data <- fd(coef_matrix, fpca_basis)  # Create new fd object
+} else {
+  fd_data <- fd_list[[1]]
+}
+
+# Perform FPCA
+fpca_result <- pca.fd(fd_data, nharm = 3)  # Extract 3 principal components
+
+# Print FPCA summary
+summary(fpca_result)
+
+# Plot eigenfunctions (Principal Component Functions)
+plot(fpca_result$harmonics, main = "Eigenfunctions (Principal Component Functions)", xlab = "Weeks", ylab = "Eigenfunctions")
+
+# Plot variance explained
+plot(cumsum(fpca_result$values) / sum(fpca_result$values), type = "b", 
+     xlab = "Number of Components", ylab = "Cumulative Variance Explained", 
+     main = "Scree Plot for FPCA")
+
+# Scores for each store
+fpca_scores <- fpca_result$scores
+print(fpca_scores)
+
+
+#### CLUSTERING ####
+
+# Extract FPCA scores (each row represents a store)
+fpca_scores <- as.data.frame(fpca_result$scores)
+
+# Standardize the scores to prevent scale dominance
+fpca_scores_scaled <- scale(fpca_scores)
+
+# Determine optimal number of clusters using the Elbow method
+fviz_nbclust(fpca_scores_scaled, kmeans, method = "wss") +
+  ggtitle("Elbow Method for Optimal Clusters")
+
+# Apply k-means clustering with optimal k 
+set.seed(123)  # For reproducibility
+k <- 4  # Chosen by the elbow method
+kmeans_result <- kmeans(fpca_scores_scaled, centers = k, nstart = 25)
+
+# Add cluster labels to data
+fpca_scores$Cluster <- as.factor(kmeans_result$cluster)
+
+# Visualize the clusters in 2D using the first two principal components
+ggplot(fpca_scores, aes(x = V1, y = V2, color = Cluster)) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  labs(title = "Cluster Visualization using FPCA Scores", x = "FPCA 1", y = "FPCA 2")
+
+# Perform hierarchical clustering
+hc_result <- hclust(dist(fpca_scores_scaled), method = "ward.D2")
+
+# Dendrogram visualization
+plot(hc_result, labels = FALSE, main = "Hierarchical Clustering Dendrogram")
+
+# Cut tree into k clusters and assign labels
+hc_clusters <- cutree(hc_result, k)
+fpca_scores$HC_Cluster <- as.factor(hc_clusters)
+
+# Silhouette analysis to validate clustering quality
+silhouette_score <- silhouette(kmeans_result$cluster, dist(fpca_scores_scaled))
+fviz_silhouette(silhouette_score) + ggtitle("Silhouette Plot for Clustering")
