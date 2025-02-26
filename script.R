@@ -2,15 +2,17 @@
 
 # Authors: Anaïs BOUGHANEM, Théo DRUILHE and Sigurd SAUE
 
-
 library(dplyr)
 library(ggplot2)
 library(readr)
 library(lubridate)
 library(tidyr)
 library(plotly)
-library(fda)
 library(purrr)
+library(cluster)   # For silhouette analysis
+library(factoextra) # For k-means visualization
+library(fda)
+
 ###### Descriptive Statistics #####
 
 data <- read_csv("data/walmart_cleaned_subset.csv")
@@ -281,12 +283,11 @@ ggplot() +
 # As for the store 4, we have a better fit with fewer knots and some
 # specific knots around Christmas
 
-# We now apply the spline to all the stores
+# We now apply the spline to all stores
 
 df_total_sales <- data %>%
   group_by(Store, Date) %>%
   summarise(Total_Weekly_Sales = sum(Weekly_Sales, na.rm = TRUE), .groups = "drop")
-
 
 df_total_sales <- df_total_sales %>%
   group_by(Store) %>%
@@ -294,19 +295,17 @@ df_total_sales <- df_total_sales %>%
   mutate(Week = row_number()) %>% 
   ungroup()
 
-
-
-# Créer une base B-spline
+# Create a B-spline basis
 Spline_b_all_store <- create.bspline.basis(c(0, max(df_total_sales$Week)), breaks = knots_positions, norder = 3)
 
 # We create a function to smooth the data
 smooth_store <- function(df) {
   funList <- smooth.basis(df$Week, df$Total_Weekly_Sales, Spline_b_all_store)
-  df$y_pred <- eval.fd(df$Week, funList$fd)  # Prédictions du spline
+  df$y_pred <- eval.fd(df$Week, funList$fd)  # Spline predictions
   return(df)
 }
 
-# We apply the spline to all the stores
+# We apply the spline to all stores
 df_smoothed_sales <- df_total_sales %>%
   group_by(Store) %>%
   nest() %>%
@@ -316,12 +315,11 @@ df_smoothed_sales <- df_total_sales %>%
 # We plot the 45 smoothed curves
 ggplot(df_smoothed_sales, aes(x = Week, y = y_pred, color = as.factor(Store))) +
   geom_line() +
-  labs(title = "Spline smoothing des ventes hebdomadaires",
-       x = "Semaine",
-       y = "Ventes lissées",
-       color = "Magasin") +
-  theme_minimal()
-
+  labs(title = "Spline Smoothing of Weekly Sales",
+       x = "Week",
+       y = "Smoothed Sales") +  # Removed the color label
+  theme_minimal() +
+  theme(legend.position = "none")  # Hides the legend
 
 
 ###### REGISTRATION ######
@@ -461,8 +459,8 @@ ggplot(data = landmark_df,
   theme_classic() + theme(legend.title=element_blank())+ xlab("Landmark number") + ylab("Time")
 
 landmark_plot <- ggplot(landmark_df,
-                     aes(x = Mean_landmark, y = position,
-                         group = id, color=as.factor(id))) + geom_point() +
+                        aes(x = Mean_landmark, y = position,
+                            group = id, color=as.factor(id))) + geom_point() +
   geom_line() +
   theme_classic() +
   theme(legend.title=element_blank())+ 
@@ -480,10 +478,10 @@ find_max_week <- function(data, year, ranges) {
   
   for (range in ranges) {
     subset_data <- data %>%
-      filter(annee == year, semaine >= range[1], semaine <= range[2])
+      filter(year == year, week >= range[1], week <= range[2])
     
     if (nrow(subset_data) > 0) {
-      max_week <- subset_data$semaine[which.max(subset_data$Weekly_Sales)]
+      max_week <- subset_data$week[which.max(subset_data$Weekly_Sales)]
       max_weeks <- c(max_weeks, max_week)
     } else {
       max_weeks <- c(max_weeks, NA)
@@ -498,9 +496,9 @@ ranges_2011 <- list(c(6,10), c(20,30), c(30,48), c(48,53))
 ranges_2012 <- list(c(6,10), c(20,30), c(30,43)) 
 
 # We compute the new landmarks
-landmark_2010 <- find_max_week(data_test, 2010, ranges_2010)
-landmark_2011 <- find_max_week(data_test, 2011, ranges_2011)
-landmark_2012 <- find_max_week(data_test, 2012, ranges_2012)
+landmark_2010 <- find_max_week(data_reg, 2010, ranges_2010)
+landmark_2011 <- find_max_week(data_reg, 2011, ranges_2011)
+landmark_2012 <- find_max_week(data_reg, 2012, ranges_2012)
 
 # We add 1
 landmark_2010 <- c(1, landmark_2010)
@@ -516,9 +514,9 @@ landmark_df_2 <- data.frame(
 
 # Compute the average of landmarks by group while ignoring NA values
 Mean_landmark_2 <- aggregate(landmark_df_2$position, 
-                           by = list(landmark_df_2$landmark), 
-                           FUN = mean, 
-                           na.rm = TRUE)$x
+                             by = list(landmark_df_2$landmark), 
+                             FUN = mean, 
+                             na.rm = TRUE)$x
 
 # And we add it to the dataframe
 landmark_df_2$Mean_landmark = rep(Mean_landmark_2, 3)
@@ -530,8 +528,8 @@ ggplot(data = landmark_df_2,
   theme_classic() + theme(legend.title=element_blank())+ xlab("Landmark number") + ylab("Time")
 
 landmark_df_2 <- ggplot(landmark_df_2,
-                     aes(x = Mean_landmark, y = position,
-                         group = id, color=as.factor(id))) + geom_point() +
+                        aes(x = Mean_landmark, y = position,
+                            group = id, color=as.factor(id))) + geom_point() +
   geom_line() +
   theme_classic() +
   theme(legend.title=element_blank())+ 
@@ -543,9 +541,9 @@ landmark_df_2
 # With the new landmarks, it seems more interestning to do a registration
 
 # We use the Hermite spline to register the curves
-Hermite_2010 = cm.spline(Mean_landmark, c(landmark_2010), n=53)
-Hermite_2011 = cm.spline(Mean_landmark, c(landmark_2011), n=53)
-Hermite_2012 = cm.spline(Mean_landmark, c(landmark_2012), n=53)
+Hermite_2010 = spline(Mean_landmark, c(landmark_2010), n=53)
+Hermite_2011 = spline(Mean_landmark, c(landmark_2011), n=53)
+Hermite_2012 = spline(Mean_landmark, c(landmark_2012), n=53)
 
 # We create a dataframe with the Hermites
 landmark_df_hermite = data.frame(id = rep(c("A","B","C"),
@@ -587,3 +585,96 @@ suppressWarnings(print(F_fin))
 # We can observe that it doesn't work. Due to the fact that 2010 and 2012
 # are not complete in the dataset, and that we have multiple landmarks,
 # we did not manage to to thes registration
+
+
+
+
+#### FPCA ####
+# Define the range of weeks
+week_range <- c(0, max(df_smoothed_sales$Week))
+
+# Create a B-spline basis for FPCA with corrected order
+fpca_basis <- create.bspline.basis(week_range, breaks = knots_positions, norder = 4)
+
+# Function to convert data into a functional data object
+convert_to_fd <- function(df) {
+  fdPar_obj <- fdPar(fpca_basis, Lfdobj = 2, lambda = 1e-2)  # Regularization
+  smooth_fd <- smooth.basis(df$Week, df$y_pred, fdPar_obj)
+  return(smooth_fd$fd)
+}
+
+# Apply functional transformation to all stores
+fd_objects <- df_smoothed_sales %>%
+  group_by(Store) %>%
+  nest() %>%
+  mutate(fd = map(data, convert_to_fd))
+
+# Extract functional data objects
+fd_list <- fd_objects$fd
+
+# Manually combine multiple functional data objects into a single fd object
+if (length(fd_list) > 1) {
+  coef_matrix <- do.call(cbind, lapply(fd_list, function(fd) fd$coefs))  # Combine coefficient matrices
+  fd_data <- fd(coef_matrix, fpca_basis)  # Create new fd object
+} else {
+  fd_data <- fd_list[[1]]
+}
+
+# Perform FPCA
+fpca_result <- pca.fd(fd_data, nharm = 3)  # Extract 3 principal components
+
+# Print FPCA summary
+summary(fpca_result)
+
+# Plot eigenfunctions (Principal Component Functions)
+plot(fpca_result$harmonics, main = "Eigenfunctions (Principal Component Functions)", xlab = "Weeks", ylab = "Eigenfunctions")
+
+# Plot variance explained
+plot(cumsum(fpca_result$values) / sum(fpca_result$values), type = "b", 
+     xlab = "Number of Components", ylab = "Cumulative Variance Explained", 
+     main = "Scree Plot for FPCA")
+
+# Scores for each store
+fpca_scores <- fpca_result$scores
+print(fpca_scores)
+
+
+#### CLUSTERING ####
+
+# Extract FPCA scores (each row represents a store)
+fpca_scores <- as.data.frame(fpca_result$scores)
+
+# Standardize the scores to prevent scale dominance
+fpca_scores_scaled <- scale(fpca_scores)
+
+# Determine optimal number of clusters using the Elbow method
+fviz_nbclust(fpca_scores_scaled, kmeans, method = "wss") +
+  ggtitle("Elbow Method for Optimal Clusters")
+
+# Apply k-means clustering with optimal k 
+set.seed(123)  # For reproducibility
+k <- 4  # Chosen by the elbow method
+kmeans_result <- kmeans(fpca_scores_scaled, centers = k, nstart = 25)
+
+# Add cluster labels to data
+fpca_scores$Cluster <- as.factor(kmeans_result$cluster)
+
+# Visualize the clusters in 2D using the first two principal components
+ggplot(fpca_scores, aes(x = V1, y = V2, color = Cluster)) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  labs(title = "Cluster Visualization using FPCA Scores", x = "FPCA 1", y = "FPCA 2")
+
+# Perform hierarchical clustering
+hc_result <- hclust(dist(fpca_scores_scaled), method = "ward.D2")
+
+# Dendrogram visualization
+plot(hc_result, labels = FALSE, main = "Hierarchical Clustering Dendrogram")
+
+# Cut tree into k clusters and assign labels
+hc_clusters <- cutree(hc_result, k)
+fpca_scores$HC_Cluster <- as.factor(hc_clusters)
+
+# Silhouette analysis to validate clustering quality
+silhouette_score <- silhouette(kmeans_result$cluster, dist(fpca_scores_scaled))
+fviz_silhouette(silhouette_score) + ggtitle("Silhouette Plot for Clustering")
